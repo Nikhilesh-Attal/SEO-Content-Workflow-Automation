@@ -1,0 +1,264 @@
+{
+  "name": "SEO Content Workflow Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const message = $input.first().json.chatInput || '';\n// Regex to find any HTTP or HTTPS link in the user's chat message\nconst urlMatch = message.match(/https?:\\/\\/[^\\s]+/);\n\nif (!urlMatch) {\n  throw new Error('No valid URL found in your message. Please paste a link.');\n}\n\n// Output the clean URL to the next node\nreturn { url: urlMatch[0] };"
+      },
+      "id": "6daaef61-fc5f-4c86-ac3b-4bb19119572d",
+      "name": "Extract URL (Parser)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4e4b1a2d-f4c9-4759-9b8f-b5735a1851a5",
+      "name": "Scrape Competitor URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1312,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1680,
+        448
+      ],
+      "id": "2c9cb81c-2365-4fc9-90bc-c4d99af95240",
+      "name": "When chat message received",
+      "webhookId": "330140ee-42f0-4b00-877a-29e9d7884d95"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "data",
+              "value": "={{ $json.choices[0].message.content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cb74c907-fd50-4880-807b-eeba312f52ae",
+      "name": "Format Output1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    model: \"qwen/qwen3-32b\",\n    messages: [\n      {\n        role: \"system\",\n        content: \"You are an Expert SEO Content Strategist for a premium agency called Webvory. Analyze the provided competitor text and generate a structured Content Brief in Markdown. Include: 1) Proposed SEO Title, 2) Meta Description, 3) 5 Target Keywords, 4) A detailed Outline (H2s and H3s).\"\n      },\n      {\n        role: \"user\",\n        content: `Competitor text to analyze: ${ String($json.data).substring(0, 12000) }`\n      }\n    ],\n    temperature: 0.7\n  })\n}}",
+        "options": {}
+      },
+      "id": "c8c126ce-0915-40be-a99f-d714946fd71f",
+      "name": "Groq AI (Generate Brief)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -864,
+        448
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ML1sooJgldHuVqze",
+          "name": "Groq AI School"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "html",
+        "options": {
+          "fileName": "={{ $('Extract URL (Parser)').item.json.url }}.html"
+        }
+      },
+      "id": "97cc7163-e9f1-420a-b0f3-174bfb5c3cef",
+      "name": "Convert json to html file",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -416,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Paste this in a Code node replacing the HTML Extract node\nconst html = $input.first().json.data || '';\n\n// Extract title\nconst titleMatch = html.match(/<title[^>]*>(.*?)<\\/title>/si);\nconst title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';\n\n// Extract meta description\nconst metaMatch = html.match(/<meta[^>]*name=[\"']description[\"'][^>]*content=[\"']([^\"']+)[\"']/si)\n                || html.match(/<meta[^>]*content=[\"']([^\"']+)[\"'][^>]*name=[\"']description[\"']/si);\nconst metaDesc = metaMatch ? metaMatch[1].trim() : '';\n\n// Extract all headings\nconst h1s = [...html.matchAll(/<h1[^>]*>(.*?)<\\/h1>/gsi)].map(m => m[1].replace(/<[^>]+>/g, '').trim());\nconst h2s = [...html.matchAll(/<h2[^>]*>(.*?)<\\/h2>/gsi)].map(m => m[1].replace(/<[^>]+>/g, '').trim());\nconst h3s = [...html.matchAll(/<h3[^>]*>(.*?)<\\/h3>/gsi)].map(m => m[1].replace(/<[^>]+>/g, '').trim());\n\n// Extract paragraphs\nconst paras = [...html.matchAll(/<p[^>]*>(.*?)<\\/p>/gsi)]\n  .map(m => m[1].replace(/<[^>]+>/g, '').trim())\n  .filter(t => t.length > 40)\n  .slice(0, 30);\n\nconst structured = `\nPAGE TITLE: ${title}\nMETA DESCRIPTION: ${metaDesc}\nH1 HEADINGS: ${h1s.join(' | ')}\nH2 HEADINGS: ${h2s.join(' | ')}\nH3 HEADINGS: ${h3s.join(' | ')}\nBODY CONTENT:\n${paras.join('\\n')}\n`.trim();\n\nreturn { data: structured };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        448
+      ],
+      "id": "7d668744-fa30-4522-b0ce-ad88ea8ddb7f",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "name": "={{ $('Extract URL (Parser)').item.json.url }}.html",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -224,
+        448
+      ],
+      "id": "e60995c0-af3a-4428-9f6b-524eeb8188a3",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "JYd3OY3dv3b5HpYP",
+          "name": "sathi"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Extract URL (Parser)": {
+      "main": [
+        [
+          {
+            "node": "Scrape Competitor URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Competitor URL": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Extract URL (Parser)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output1": {
+      "main": [
+        [
+          {
+            "node": "Convert json to html file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq AI (Generate Brief)": {
+      "main": [
+        [
+          {
+            "node": "Format Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert json to html file": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Groq AI (Generate Brief)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "42854f6c-8ed0-4f84-af02-8c9410f899a7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "219e61b1f9e9ad8227ed7f07d7f7f514500d421625427035c4e290241bd19115"
+  },
+  "id": "WbQAzJcikrGYNkl5",
+  "tags": []
+}
